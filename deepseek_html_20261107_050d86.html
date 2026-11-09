@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1e1b4b">
+<title>Voxa — AI Voice Studio</title>
+
+<!-- External Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+
+<script>
+  // Prevent Theme Flash: Apply theme instantly before rendering HTML
+  (function() {
+    const saved = localStorage.getItem('voxa-theme');
+    const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (saved === 'dark' || (!saved && systemDark)) {
+      document.documentElement.style.backgroundColor = '#0f172a';
+      document.addEventListener('DOMContentLoaded', () => document.body.classList.add('dark-mode'));
+    }
+  })();
+</script>
+
+<style>
+  :root {
+    --bg: #f6f8fd;
+    --panel: rgba(255, 255, 255, 0.85);
+    --panel-border: #e2e8f0;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --primary: #6d5dfc;
+    --primary-hover: #5a4ae3;
+    --secondary: #ff7a9f;
+    --danger: #ff5c5c;
+    --success: #10b981;
+    --input-bg: #ffffff;
+    --shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08);
+  }
+
+  body.dark-mode {
+    --bg: #0f172a;
+    --panel: rgba(30, 41, 59, 0.85);
+    --panel-border: #334155;
+    --text: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #818cf8;
+    --primary-hover: #6366f1;
+    --secondary: #fb7185;
+    --input-bg: rgba(15, 23, 42, 0.6);
+    --shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.3);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+  html, body { height:100%; }
+  
+  body {
+    min-height:100vh; display:flex; justify-content:center; align-items:center; padding:1.5rem;
+    background-color: var(--bg); color: var(--text);
+    -webkit-font-smoothing:antialiased; transition: background .3s, color .3s;
+    background-image: radial-gradient(circle at 10% 10%, rgba(109, 93, 252, 0.08), transparent 40%),
+                      radial-gradient(circle at 90% 90%, rgba(255, 122, 159, 0.08), transparent 40%);
+  }
+
+  .app-container {
+    width:100%; max-width:950px; background: var(--panel);
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border:1px solid var(--panel-border); border-radius:32px;
+    padding:2.5rem; box-shadow: var(--shadow); position: relative;
+    display: flex; flex-direction: column; max-height: 95vh; overflow-y: auto;
+  }
+
+  /* --- HEADER --- */
+  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 2rem; }
+  .brand { display:flex; align-items:center; gap: 1rem; }
+  .logo-icon {
+    width: 50px; height: 50px; border-radius: 16px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--primary), var(--secondary)); font-size: 1.6rem;
+    box-shadow: 0 10px 20px -5px var(--primary); color: white;
+  }
+  h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -0.5px; line-height: 1.2; }
+  .tagline { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.2rem; }
+  
+  .icon-btn {
+    background: var(--input-bg); border: 1px solid var(--panel-border);
+    color: var(--text); width: 44px; height: 44px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 1.2rem; cursor: pointer; transition: .2s;
+  }
+  .icon-btn:hover { border-color: var(--primary); transform: rotate(15deg); color: var(--primary); }
+
+  /* --- TABS --- */
+  .tab-container { display: flex; background: var(--input-bg); padding: 0.4rem; border-radius: 16px; margin-bottom: 2rem; border: 1px solid var(--panel-border); }
+  .tab-btn { flex: 1; padding: 0.8rem; border: none; background: transparent; color: var(--text-muted); font-weight: 600; font-size: 0.95rem; border-radius: 12px; cursor: pointer; transition: 0.2s; }
+  .tab-btn.active { background: var(--primary); color: white; box-shadow: 0 8px 16px -4px var(--primary); }
+
+  .panel { display: none; }
+  .panel.active { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* --- INPUTS & BUTTONS --- */
+  textarea {
+    width: 100%; min-height: 140px; resize: vertical; padding: 1.2rem; border-radius: 20px;
+    background: var(--input-bg); color: var(--text); border: 1.5px solid var(--panel-border);
+    font-size: 1rem; line-height: 1.6; outline: none; transition: border-color 0.2s; font-family: inherit;
+    margin-bottom: 0.5rem; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02);
+  }
+  textarea:focus { border-color: var(--primary); }
+
+  .action-row { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.5rem; }
+  .btn {
+    border: none; padding: 0.8rem 1.4rem; border-radius: 14px; font-weight: 600; font-size: 0.9rem;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+    transition: transform 0.15s, background 0.15s, box-shadow 0.15s;
+    background: var(--input-bg); color: var(--text); border: 1px solid var(--panel-border); font-family: inherit;
+  }
+  .btn:hover:not(:disabled) { background: var(--panel); transform: translateY(-2px); box-shadow: 0 6px 15px rgba(0,0,0,0.05); }
+  .btn:active:not(:disabled) { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.primary { background: var(--primary); color: white; border-color: var(--primary); box-shadow: 0 8px 16px -6px var(--primary); }
+  .btn.danger { background: var(--danger); color: white; border-color: var(--danger); }
+  .btn.secondary { background: var(--secondary); color: white; border-color: var(--secondary); }
+
+  /* --- CONTROLS --- */
+  .control-group { background: var(--input-bg); border: 1px solid var(--panel-border); border-radius: 20px; padding: 1.2rem; margin-bottom: 1.2rem; }
+  .control-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .control-label { font-size: 0.85rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  
+  .slider-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+  .slider-row:last-child { margin-bottom: 0; }
+  .slider-row span { font-size: 0.85rem; font-weight: 600; width: 45px; text-align: right; color: var(--primary); }
+  input[type=range] { flex: 1; accent-color: var(--primary); cursor: pointer; height: 6px; border-radius: 3px; }
+  
+  select {
+    width: 100%; background: var(--panel); color: var(--text); border: 1.5px solid var(--panel-border);
+    padding: 0.8rem 1rem; border-radius: 12px; font-size: 0.95rem; outline: none; font-family: inherit; cursor: pointer;
+    appearance: none; background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2364748b%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+    background-repeat: no-repeat; background-position: right 1rem top 50%; background-size: 0.65rem auto;
+  }
+  select:focus { border-color: var(--primary); }
+
+  .translation-box { display: flex; gap: 0.8rem; align-items: center; background: var(--input-bg); padding: 0.8rem; border-radius: 16px; border: 1px solid var(--panel-border); margin-bottom: 1.2rem; }
+  .translation-box select { width: auto; flex: 1; border: none; background: transparent; padding-left: 0.5rem; }
+
+  .counter { font-size: 0.8rem; color: var(--text-muted); text-align: right; margin-bottom: 1.5rem; }
+  
+  /* --- VISUALIZERS --- */
+  .split-view { display: flex; gap: 1.5rem; }
+  .left-col { flex: 1; display: flex; flex-direction: column; }
+  .right-col { flex: 1; display: none; flex-direction: column; background: var(--input-bg); border-radius: 20px; border: 1px solid var(--panel-border); overflow: hidden; height: 400px; }
+  .right-col.show { display: flex; }
+  #networkContainer { width: 100%; height: 100%; flex: 1; }
+
+  /* --- STATUS --- */
+  .status-bar { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem; }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted); transition: 0.3s; }
+  .status-dot.live { background: var(--success); box-shadow: 0 0 12px var(--success); }
+
+  /* --- MODAL --- */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(8px); display: none; justify-content: center; align-items: center; z-index: 1000; }
+  .modal-overlay.show { display: flex; }
+  .modal-card { background: var(--panel); border: 1px solid var(--panel-border); width: 90%; max-width: 420px; border-radius: 28px; padding: 2rem; box-shadow: 0 30px 60px rgba(0,0,0,0.2); }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 1.2rem 0; border-bottom: 1px solid var(--panel-border); }
+  .setting-item:last-child { border-bottom: none; }
+
+  /* --- TOGGLE SWITCH --- */
+  .switch { position: relative; display: inline-block; width: 46px; height: 24px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: var(--panel-border); transition: .4s; border-radius: 24px; }
+  .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+  input:checked + .slider { background-color: var(--primary); }
+  input:checked + .slider:before { transform: translateX(22px); }
+
+  .app-footer { margin-top: 2rem; padding-top: 1.2rem; border-top: 1px solid var(--panel-border); text-align: center; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; }
+  .app-footer span { color: var(--primary); }
+
+  @media (max-width: 768px) {
+    .app-container { padding: 1.5rem; border-radius: 24px; }
+    .split-view { flex-direction: column; }
+    .right-col { height: 300px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-container">
+  <!-- HEADER -->
+  <div class="header">
+    <div class="brand">
+      <div class="logo-icon">🎧</div>
+      <div>
+        <h1>Voxa <small style="font-size:0.6rem; background:var(--secondary); color:white; padding:0.2rem 0.6rem; border-radius:20px; vertical-align:middle; margin-left:0.5rem; letter-spacing:1px;">V6</small></h1>
+        <div class="tagline">Flawless AI Voice Studio</div>
+      </div>
+    </div>
+    <button class="icon-btn" id="openSettingsBtn" title="Settings">⚙️</button>
+  </div>
+
+  <!-- TABS -->
+  <div class="tab-container">
+    <button class="tab-btn active" data-tab="stt">🎤 Voice Analysis</button>
+    <button class="tab-btn" data-tab="tts">🔊 Text to Speech</button>
+  </div>
+
+  <!-- ================= STT PANEL ================= -->
+  <div class="panel active" id="panel-stt">
+    <div class="split-view">
+      <div class="left-col">
+        <!-- Drop Zone -->
+        <div class="control-group" id="dropZone" style="text-align:center; cursor:pointer; border: 2px dashed var(--primary); background: rgba(109, 93, 252, 0.05); padding: 1.5rem; margin-bottom: 1rem;">
+          <strong style="color: var(--primary);">Drag & Drop Audio Here</strong><br>
+          <span style="font-size:0.8rem; color: var(--text-muted);">(MP3, WAV. Plays out loud for transcription)</span>
+        </div>
+
+        <div id="sttOutput" style="min-height: 150px; max-height: 300px; overflow-y: auto; background: var(--input-bg); border: 1.5px solid var(--panel-border); border-radius: 20px; padding: 1.2rem; margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.6;">
+          <span style="color: var(--text-muted);">Your spoken words will appear here…</span>
+        </div>
+
+        <div class="action-row">
+          <button class="btn danger" id="micBtn">🎙️ Start Listening</button>
+          <button class="btn primary" id="mindMapBtn">🧠 Mind Map</button>
+          <button class="btn secondary" id="flowchartBtn">📊 Flowchart</button>
+          <button class="btn" id="pdfBtn">📄 PDF</button>
+          <button class="btn" id="clearSttBtn">🗑️ Clear</button>
+        </div>
+
+        <div class="control-group" style="display:flex; justify-content:space-between; align-items:center;">
+          <select id="langSelect" style="width: 60%;">
+            <option value="en-US">English (US)</option>
+            <option value="en-IN">English (India)</option>
+            <option value="hi-IN">हिन्दी</option>
+          </select>
+          <label class="switch">
+            <input type="checkbox" id="autoPuncChk" checked>
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="status-bar">
+          <div class="status-dot" id="sttDot"></div>
+          <span id="sttStatus">Ready.</span>
+        </div>
+      </div>
+
+      <!-- Visualizer -->
+      <div class="right-col" id="visualCol">
+        <div style="padding: 1rem; display: flex; justify-content: space-between; border-bottom: 1px solid var(--panel-border);">
+          <span id="visualTitle" style="font-weight: 700; color: var(--text-muted); font-size: 0.9rem;">Visualizer</span>
+          <button class="icon-btn" id="closeVisualBtn" style="width: 30px; height: 30px; font-size: 0.8rem;">✕</button>
+        </div>
+        <div id="networkContainer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TTS PANEL ================= -->
+  <div class="panel" id="panel-tts">
+    <textarea id="ttsInput" placeholder="Type something for the voice to say…">Hello! This is Voxa. You can translate me, change my pitch and speed, and export me as an MP3.</textarea>
+    <div class="counter" id="ttsCounter">0 words · 0 characters</div>
+
+    <!-- Translation Row -->
+    <div class="translation-box">
+      <span style="font-size: 1.2rem; margin-left: 0.5rem;">🌐</span>
+      <select id="translateLang">
+        <option value="en">English (Original)</option>
+        <option value="es">Spanish</option>
+        <option value="fr">French</option>
+        <option value="de">German</option>
+        <option value="hi">Hindi</option>
+        <option value="mr">Marathi</option>
+        <option value="ja">Japanese</option>
+      </select>
+      <button class="btn primary" id="translateBtn" style="padding: 0.6rem 1rem;">Translate</button>
+    </div>
+
+    <!-- Main Controls -->
+    <div class="action-row">
+      <button class="btn primary" id="speakBtn">🔊 Speak</button>
+      <button class="btn" id="stopBtn">⏹️ Stop</button>
+      <button class="btn" id="downloadBtn" style="background: var(--secondary); color: white; border-color: var(--secondary);">🎵 Export MP3</button>
+    </div>
+
+    <!-- Voice Selection -->
+    <div class="control-group">
+      <div class="control-header">
+        <span class="control-label">Voice Selector</span>
+        <button class="btn" id="previewVoiceBtn" style="padding: 0.3rem 0.8rem; font-size: 0.75rem;">▶ Preview</button>
+      </div>
+      <select id="voiceSelect"></select>
+    </div>
+
+    <!-- Pitch & Speed Sliders -->
+    <div class="control-group">
+      <div class="control-header">
+        <span class="control-label">Pitch & Speed</span>
+      </div>
+      <div class="slider-row">
+        <span>Pitch</span>
+        <input type="range" id="pitchRange" min="0.5" max="2" step="0.1" value="1">
+        <span id="pitchVal" style="font-weight:700; color:var(--primary);">1.0</span>
+      </div>
+      <div class="slider-row">
+        <span>Speed</span>
+        <input type="range" id="rateRange" min="0.5" max="2" step="0.1" value="1">
+        <span id="rateVal" style="font-weight:700; color:var(--primary);">1.0</span>
+      </div>
+    </div>
+
+    <div class="status-bar">
+      <div class="status-dot" id="ttsDot"></div>
+      <span id="ttsStatus">Idle.</span>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="app-footer">
+    DESIGNED AND DEVELOPED BY ISHAN ... <span>IDSTUDIOS</span>
+  </div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>⚙️ Settings</h2>
+      <button class="icon-btn" id="closeSettingsBtn" style="width:30px; height:30px; font-size:1rem;">×</button>
+    </div>
+    <div class="setting-item">
+      <div>
+        <div style="font-weight:600;">Dark Mode</div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">Toggle dark theme manually</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="themeToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="setting-item">
+      <div>
+        <div style="font-weight:600;">Install App</div>
+        <div style="font-size:0.75rem; color:var(--text-muted);">Add Voxa to your home screen</div>
+      </div>
+      <button class="btn primary" id="installPwaBtn" style="padding:0.5rem 1rem;">Install</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  
+  // --- THEME MANAGEMENT ---
+  var themeToggle = $('themeToggle');
+  if (document.body.classList.contains('dark-mode')) themeToggle.checked = true;
+
+  themeToggle.addEventListener('change', () => {
+    document.body.classList.toggle('dark-mode', themeToggle.checked);
+    localStorage.setItem('voxa-theme', themeToggle.checked ? 'dark' : 'light');
+  });
+
+  // --- PWA (Service Worker) ---
+  var deferredPrompt;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+  });
+
+  $('installPwaBtn').addEventListener('click', async () => {
+    if (!deferredPrompt) return alert("App is already installed or unsupported.");
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') $('installPwaBtn').textContent = 'Installed!';
+    deferredPrompt = null;
+  });
+
+  if ('serviceWorker' in navigator) {
+    var swCode = `
+      const CACHE = 'voxa-v6';
+      const ASSETS = [
+        'https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js',
+        'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+        'https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js'
+      ];
+      self.addEventListener('install', e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS))));
+      self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+    `;
+    navigator.serviceWorker.register(URL.createObjectURL(new Blob([swCode], { type: 'application/javascript' }))).catch(console.log);
+  }
+
+  // --- UI TABS ---
+  $('openSettingsBtn').addEventListener('click', () => $('settingsModal').classList.add('show'));
+  $('closeSettingsBtn').addEventListener('click', () => $('settingsModal').classList.remove('show'));
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      $('panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  // --- STATE ---
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var synth = window.speechSynthesis;
+  var ttsSupported = !!synth;
+  var sttSupported = !!SR;
+  var recognition = null;
+  var listening = false;
+  var transcriptData = [];
+  var startTime = null;
+  var voices = [];
+  var network = null;
+  var keepListening = false;
+
+  // --- VOICES ---
+  function populateVoices() {
+    if (!ttsSupported) return;
+    voices = synth.getVoices() || [];
+    voices.sort((a, b) => a.lang.localeCompare(b.lang));
+    var sel = $('voiceSelect');
+    sel.innerHTML = '';
+    voices.forEach((v, i) => {
+      var opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = v.name + ' — ' + v.lang;
+      sel.appendChild(opt);
+    });
+  }
+  if (ttsSupported) {
+    populateVoices();
+    if (synth.onvoiceschanged !== undefined) synth.onvoiceschanged = populateVoices;
+  }
+
+  $('pitchRange').addEventListener('input', e => $('pitchVal').textContent = parseFloat(e.target.value).toFixed(1));
+  $('rateRange').addEventListener('input', e => $('rateVal').textContent = parseFloat(e.target.value).toFixed(1));
+
+  // --- TRANSLATION ---
+  $('translateBtn').addEventListener('click', async function() {
+    var text = $('ttsInput').value.trim();
+    var lang = $('translateLang').value;
+    if (!text) return alert('Enter text first.');
+    if (lang === 'en') return alert('Text is already in English.');
+    
+    this.textContent = '⏳...';
+    this.disabled = true;
+    try {
+      var res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|${lang}`);
+      var data = await res.json();
+      $('ttsInput').value = data.responseData.translatedText;
+      updateCounter();
+      
+      var prefix = lang.split('-')[0];
+      for (let i = 0; i < voices.length; i++) {
+        if (voices[i].lang.toLowerCase().startsWith(prefix)) { $('voiceSelect').value = i; break; }
+      }
+    } catch (err) { alert('Translation failed.'); }
+    this.textContent = 'Translate';
+    this.disabled = false;
+  });
+
+  // --- WORD COUNTER ---
+  function updateCounter() {
+    var text = $('ttsInput').value;
+    var words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    $('ttsCounter').textContent = words + ' words · ' + text.length + ' characters';
+  }
+  $('ttsInput').addEventListener('input', updateCounter);
+  updateCounter();
+
+  // --- TTS & MP3 ---
+  function getUtterance(text) {
+    var u = new SpeechSynthesisUtterance(text);
+    var idx = parseInt($('voiceSelect').value, 10);
+    if (voices[idx]) u.voice = voices[idx];
+    u.pitch = parseFloat($('pitchRange').value) || 1;
+    u.rate = parseFloat($('rateRange').value) || 1;
+    return u;
+  }
+
+  $('speakBtn').addEventListener('click', () => {
+    var text = $('ttsInput').value;
+    if (!text) return;
+    synth.cancel();
+    synth.speak(getUtterance(text));
+  });
+
+  $('stopBtn').addEventListener('click', () => { synth.cancel(); });
+
+  $('previewVoiceBtn').addEventListener('click', () => {
+    synth.cancel();
+    synth.speak(getUtterance("Hello! This is a preview of my voice."));
+  });
+
+  $('downloadBtn').addEventListener('click', async function () {
+    var text = $('ttsInput').value.trim();
+    if (!text || !ttsSupported) return;
+    var btn = $('downloadBtn');
+    btn.textContent = '⏳...';
+    btn.disabled = true;
+
+    try {
+      var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      var dest = audioCtx.createMediaStreamDestination();
+      var mediaRecorder = new MediaRecorder(dest.stream);
+      var chunks = [];
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+      mediaRecorder.onstop = async () => {
+        var blob = new Blob(chunks, { type: 'audio/webm' });
+        var audioBuffer = await audioCtx.decodeAudioData(await blob.arrayBuffer());
+        var mp3encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, 128);
+        var left = audioBuffer.getChannelData(0);
+        var leftInt = new Int16Array(left.length);
+        for (var i = 0; i < left.length; i++) leftInt[i] = Math.max(-1, Math.min(1, left[i])) * 0x7FFF;
+        var mp3Data = [];
+        for (var i = 0; i < leftInt.length; i += 1152) {
+          var mp3buf = mp3encoder.encodeBuffer(leftInt.subarray(i, i + 1152));
+          if (mp3buf.length > 0) mp3Data.push(new Uint8Array(mp3buf));
+        }
+        var finalbuf = mp3encoder.flush();
+        if (finalbuf.length > 0) mp3Data.push(new Uint8Array(finalbuf));
+        var url = URL.createObjectURL(new Blob(mp3Data, { type: 'audio/mp3' }));
+        var a = document.createElement('a'); a.href = url; a.download = 'Voxa.mp3'; a.click();
+        btn.textContent = '🎵 Export MP3'; btn.disabled = false;
+      };
+      mediaRecorder.start();
+      var utter = getUtterance(text);
+      utter.onend = () => { setTimeout(() => { if (mediaRecorder.state !== 'inactive') mediaRecorder.stop(); audioCtx.close(); }, 400); };
+      synth.speak(utter);
+    } catch (err) {
+      btn.textContent = '🎵 Export MP3'; btn.disabled = false; alert('Export failed.');
+    }
+  });
+
+  // --- SPEECH RECOGNITION ---
+  if (sttSupported) {
+    recognition = new SR();
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    recognition.onstart = () => {
+      listening = true;
+      if (!startTime) startTime = Date.now();
+      $('micBtn').textContent = '⏹️ Stop Listening';
+      $('sttDot').classList.add('live');
+      $('sttStatus').textContent = 'Listening & Analyzing…';
+    };
+
+    recognition.onend = () => {
+      listening = false;
+      $('micBtn').textContent = '🎙️ Start Listening';
+      $('sttDot').classList.remove('live');
+      
+      if (keepListening) {
+        try { recognition.start(); } catch(e){}
+      } else {
+        $('sttStatus').textContent = 'Stopped.';
+      }
+    };
+
+    recognition.onresult = (event) => {
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) final += event.results[i][0].transcript + ' ';
+      }
+      if (final) addTranscript(final.trim());
+    };
+
+    $('micBtn').addEventListener('click', () => {
+      if (listening) { keepListening = false; recognition.stop(); return; }
+      keepListening = true;
+      recognition.lang = $('langSelect').value;
+      try { recognition.start(); } catch (err) { $('sttStatus').textContent = 'Error: ' + err.message; }
+    });
+  } else {
+    $('micBtn').disabled = true;
+    $('micBtn').textContent = '🚫 Not Supported';
+  }
+
+  // --- TRANSCRIPT UI ---
+  var fillerWords = ['um', 'uh', 'like', 'you know', 'actually', 'basically', 'literally'];
+  
+  function processTextForDisplay(text) {
+    var processed = text;
+    fillerWords.forEach(word => {
+      var regex = new RegExp('\\b(' + word + ')\\b', 'gi');
+      processed = processed.replace(regex, '<span style="color: var(--danger); font-weight: bold; text-decoration: underline wavy;">$1</span>');
+    });
+    return processed;
+  }
+
+  function updateTranscriptUI() {
+    var out = $('sttOutput');
+    out.innerHTML = '';
+    transcriptData.forEach(item => {
+      var div = document.createElement('div');
+      div.style.marginBottom = '0.5rem';
+      div.innerHTML = `<span style="color: var(--purple); font-size: 0.75rem; font-family: monospace; margin-right: 6px;">[${item.timestamp}]</span> ${processTextForDisplay(item.text)}`;
+      out.appendChild(div);
+    });
+    out.scrollTop = out.scrollHeight;
+  }
+
+  function formatTime(ms) {
+    var totalSec = Math.floor(ms / 1000);
+    var min = Math.floor(totalSec / 60).toString().padStart(2, '0');
+    var sec = (totalSec % 60).toString().padStart(2, '0');
+    return `${min}:${sec}`;
+  }
+
+  function addTranscript(text) {
+    if ($('autoPuncChk').checked && !/[.!?]$/.test(text)) text += '.';
+    var time = startTime ? formatTime(Date.now() - startTime) : '00:00';
+    transcriptData.push({ text: text, timestamp: time });
+    updateTranscriptUI();
+  }
+
+  // --- DRAG & DROP ---
+  var dropZone = $('dropZone');
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.background = 'rgba(109, 93, 252, 0.15)'; });
+  dropZone.addEventListener('dragleave', () => dropZone.style.background = 'rgba(109, 93, 252, 0.05)');
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.background = 'rgba(109, 93, 252, 0.05)';
+    var file = e.dataTransfer.files[0];
+    if (!file || !file.type.startsWith('audio/')) return alert('Please drop an audio file.');
+    
+    if (listening) { keepListening = false; recognition.stop(); }
+
+    var url = URL.createObjectURL(file);
+    var audio = new Audio(url);
+    audio.volume = 1.0;
+    
+    $('sttStatus').textContent = 'Playing audio for transcription…';
+    audio.play();
+    
+    if (recognition) {
+      keepListening = false;
+      listening = true;
+      recognition.lang = $('langSelect').value;
+      try { recognition.start(); } catch (err) {}
+    }
+    
+    audio.onended = () => {
+      URL.revokeObjectURL(url);
+      if (recognition) recognition.stop();
+      $('sttStatus').textContent = 'Audio finished.';
+    };
+  });
+
+  // --- MIND MAP ---
+  $('mindMapBtn').addEventListener('click', () => {
+    if (transcriptData.length === 0) return alert('Speak something first!');
+    $('visualCol').classList.add('show');
+    $('visualTitle').textContent = '🧠 Interactive Mind Map';
+    
+    var text = transcriptData.map(t => t.text).join(' ').toLowerCase();
+    var words = text.replace(/[^\w\s]/g, '').split(/\s+/);
+    var freq = {};
+    words.forEach(w => { if (w.length > 3 && !fillerWords.includes(w)) freq[w] = (freq[w] || 0) + 1; });
+    var topWords = Object.keys(freq).sort((a,b) => freq[b] - freq[a]).slice(0, 6);
+    
+    var nodes = [{ id: 1, label: 'Main Idea', color: '#6d5dfc', font: { color: 'white' } }];
+    var edges = [];
+    topWords.forEach((word, i) => {
+      nodes.push({ id: i+2, label: word, color: '#ff7a9f', font: { color: 'white' } });
+      edges.push({ from: 1, to: i+2 });
+    });
+
+    var container = $('networkContainer');
+    var data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+    var options = { physics: { stabilization: false, barnesHut: { gravitationalConstant: -2000 } }, nodes: { shape: 'dot', size: 20, borderWidth: 2, shadow: true }, edges: { color: '#64748b', width: 2 } };
+    
+    if (network) network.destroy();
+    network = new vis.Network(container, data, options);
+    
+    network.on("click", function (params) {
+      if (params.nodes.length > 0 && params.nodes[0] !== 1) {
+        var keyword = nodes.find(n => n.id === params.nodes[0]).label;
+        var matches = transcriptData.filter(t => t.text.toLowerCase().includes(keyword));
+        alert(`Sentences with "${keyword}":\n\n` + matches.map(m => `[${m.timestamp}] ${m.text}`).join('\n'));
+      }
+    });
+  });
+
+  // --- FLOWCHART ---
+  $('flowchartBtn').addEventListener('click', () => {
+    if (transcriptData.length === 0) return alert('Speak a process first!');
+    $('visualCol').classList.add('show');
+    $('visualTitle').textContent = '📊 Editable Flowchart';
+    
+    var text = transcriptData.map(t => t.text).join(' ');
+    var steps = text.split(/(?:first|then|next|finally|after that)[,]?\s/i).filter(s => s.trim().length > 0);
+    if (steps.length < 2) steps = ["Start", text.substring(0,20) + "...", "End"];
+    
+    var nodes = [], edges = [];
+    steps.slice(0, 6).forEach((step, i) => {
+      var isDecision = /if|but|yes|no/i.test(step);
+      nodes.push({ 
+        id: i+1, label: step.trim().substring(0, 20) + (step.length > 20 ? '...' : ''), 
+        shape: isDecision ? 'diamond' : 'box', color: isDecision ? '#ff7a9f' : '#6d5dfc', font: { color: 'white' }
+      });
+      if (i > 0) {
+        if (isDecision && i < steps.length - 1) {
+          edges.push({ from: i, to: i+1, label: 'Yes', color: '#10b981' });
+          edges.push({ from: i, to: Math.min(i+2, steps.length), label: 'No', color: '#ff5c5c' });
+        } else {
+          edges.push({ from: i, to: i+1 });
+        }
+      }
+    });
+
+    var container = $('networkContainer');
+    var data = { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) };
+    var options = { layout: { hierarchical: { direction: 'LR', sortMethod: 'directed' } }, nodes: { borderWidth: 2, shadow: true, margin: 10 }, edges: { arrows: 'to', width: 2, font: { align: 'middle', color: '#64748b' } }, physics: false };
+    
+    if (network) network.destroy();
+    network = new vis.Network(container, data, options);
+  });
+
+  $('closeVisualBtn').addEventListener('click', () => {
+    $('visualCol').classList.remove('show');
+    if (network) network.destroy();
+  });
+
+  // --- PDF & CLEAR ---
+  $('pdfBtn').addEventListener('click', () => {
+    if (transcriptData.length === 0) return;
+    var { jsPDF } = window.jspdf;
+    var doc = new jsPDF();
+    doc.setFontSize(16); doc.text("Voxa Transcript - IDSTUDIOS", 10, 20);
+    doc.setFontSize(11);
+    var y = 30;
+    transcriptData.forEach(item => {
+      doc.setTextColor(109, 93, 252); doc.text(`[${item.timestamp}]`, 10, y);
+      doc.setTextColor(0, 0, 0);
+      var lines = doc.splitTextToSize(item.text, 160);
+      doc.text(lines, 30, y);
+      y += (lines.length * 6) + 4;
+      if (y > 270) { doc.addPage(); y = 20; }
+    });
+    doc.save('Voxa_Transcript.pdf');
+  });
+
+  $('clearSttBtn').addEventListener('click', () => {
+    transcriptData = [];
+    startTime = null;
+    $('sttOutput').innerHTML = '<span style="color:var(--text-muted);">Your spoken words will appear here…</span>';
+    $('visualCol').classList.remove('show');
+    $('sttStatus').textContent = 'Cleared.';
+  });
+
+})();
+</script>
+</body>
+</html>
